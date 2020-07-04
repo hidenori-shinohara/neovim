@@ -2,6 +2,7 @@
 // it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 
 #include <stdbool.h>
+#include <string.h>
 
 #include "nvim/os/stdpaths_defs.h"
 #include "nvim/os/os.h"
@@ -81,7 +82,50 @@ char *stdpaths_get_xdg_var(const XDGVarType idx)
     ret = (char *)expand_env_save((char_u *)fallback);
   }
 
+  if (idx == kXDGDataDirs || idx == kXDGConfigDirs) {
+      ret = remove_duplicate_directories(ret);
+  }
   return ret;
+}
+
+/// Remove duplicate directories in the given string.
+/// e.g, "/usr/local/share:/usr/share:/usr/share"
+/// to "/usr/local/share:/usr/share"
+/// @param[in]  str List of directories possibly with duplicates
+/// @param[out]  str List of directories without duplicates
+char *remove_duplicate_directories(const char* val)
+  FUNC_ATTR_WARN_UNUSED_RESULT
+{
+    char* ret = (char*) xmalloc((strlen(val) + 1) * sizeof(char));
+    ret[0] = '\0';
+    const void *iter = NULL;
+    do {
+      size_t dir_len;
+      const char *dir;
+      iter = vim_env_iter(':', val, iter, &dir, &dir_len);
+      if (dir != NULL && dir_len > 0) {
+          const void *ret_iter = NULL;
+          int seen = 0;
+          do {
+              size_t ret_dir_len;
+              const char *ret_dir;
+              ret_iter = vim_env_iter(':', ret, ret_iter, &ret_dir, &ret_dir_len);
+              if (ret_dir != NULL && ret_dir_len == dir_len) {
+                  if (!strncmp(ret_dir, dir, dir_len)) {
+                      seen = 1;
+                      break;
+                  }
+              }
+          } while (ret_iter != NULL);
+          if (!seen) {
+              if (strlen(ret) > 0) {
+                  strcat(ret, ":");
+              }
+              strncat(ret, dir, dir_len);
+          }
+      }
+    } while (iter != NULL);
+    return ret;
 }
 
 /// Return Nvim-specific XDG directory subpath.
